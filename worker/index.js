@@ -172,6 +172,51 @@ function doBasicAuth(request) {
 function encodePathComponent(path) {
 	return path.split('/').map(encodeURIComponent).join('/')
 }
+
+async function parseEmbyPath(request) {
+	let pathReg = RegExp(`(?:http|https)://${self.props.emby_server}(?::\\d*)?(?:/emby)?/videos/.*`, 'i')
+	let subReg = RegExp(`(?:http|https)://${self.props.emby_server}(?::\\d*)?(?:/emby)?/videos/(\\d*)/([^/]*)/Subtitles/(\\d*)/(\\d*)(?:.*)?`, 'i')
+	if (!pathReg.test(request.url)) return -1
+	let apiKey = /(?:.*)?api_key=([^&]*)(?:.*)?/i.exec(request.url)?.[1] ??
+		/(?:.*)?X-Emby-Token=([^&]*)(?:.*)?/i.exec(request.url)?.[1] ??
+		request.headers.get('X-Emby-Token') ??
+		/(?:.*)token="([^"]*)"(?:.*)?/i.exec(request.headers.get('x-emby-authorization'))?.[1]
+	if (!apiKey) return -2
+	let path = ''
+	if (subReg.test(request.url)) {
+		console.log('Type: Subtitle')
+		let subInfo = subReg.exec(request.url)
+		let videoId = subInfo?.[1]
+		let mediaSourceId = subInfo?.[2]
+		let subIndex = subInfo?.[3]
+		//let videoIndex = subInfo?.[4]
+		if (!(videoId && mediaSourceId && subIndex)) return -3
+		let response = await fetch(`http://${self.props.emby_server}/emby/Items/${videoId}/PlaybackInfo?api_key=${apiKey}`)
+		if (response.status !== 200) return -2
+		let result = await response.json()
+		let mediaSources = result?.MediaSources
+		for (let i of mediaSources) {
+			if (i.Id === mediaSourceId) {
+				path = i.MediaStreams[subIndex].Path
+			}
+		}
+	} else {
+		console.log('Type: Video')
+		let mediaSourceId = /(?:.*)?MediaSourceId=([^&]*)(?:.*)?/i.exec(request.url)?.[1]
+		if (!mediaSourceId) return -3
+		let response = await fetch(`http://${self.props.emby_server}/emby/Items?Fields=Path&Ids=${mediaSourceId}&api_key=${apiKey}`)
+		if (response.status !== 200) return -2
+		let result = await response.json()
+		if (result?.Items.length !== 1) return -3
+		path = result.Items[0].Path
+	}
+	if (!path) return -3
+	for (let i in self.props.path_match) {
+		path = path.replace(i, self.props.path_match[i])
+	}
+	return path
+}
+
 async function handleRequest(request) {
 	if (request.method === 'OPTIONS')
 		// allow preflight request
@@ -186,6 +231,47 @@ async function handleRequest(request) {
 	if (self.props.auth && !doBasicAuth(request)) {
 		return unauthorized()
 	}
+
+	if (self.props.emby_redirect && request.url.toLowerCase().includes(self.props.emby_server)) {
+		let filePath = await parseEmbyPath(request)
+		switch (filePath) {
+			case -1:
+				console.log('Not a video link')
+				return fetch(request)
+			case -2:
+				console.log('401')
+				return new Response('', {
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					status: 401,
+				})
+			case -3:
+				console.log('404')
+				return new Response('', {
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					status: 404,
+				})
+			default:
+				const rootId = /(?:.*)rootId=([^&]*)(?:.*)?/i.exec(request.url)?.[1] || self.props.default_root_id;
+				const result = await gd.getMetaByPath(filePath, rootId);
+				if (!result) {
+					console.log('Redirect to the original server')
+					return fetch(request)
+				}
+				console.log('Redirect to GDIndex')
+				request = new Request(`https://www.google.com${encodePathComponent(filePath)}`,
+					{
+						body: request.body,
+						headers: request.headers,
+						method: request.method,
+						redirect: request.redirect
+					})
+		}
+	}
+
 	request = Object.assign({}, request, new URL(request.url))
 	request.pathname = request.pathname
 		.split('/')

@@ -21,6 +21,11 @@ module.exports = {
 		client_id: '202264815644.apps.googleusercontent.com',
 		client_secret: 'X4Z3ca8xfWDb1Voo-F9a7ZxJ',
 		refresh_token: '',
+		emby_redirect: false,
+		emby_server: '',
+		path_match: {
+    		'': '',
+  		},
 		service_account: false,
 		service_account_json: {},
 		auth: false,

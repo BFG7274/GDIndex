@@ -2,33 +2,18 @@
 
 ![preview](https://i.imgur.com/ENkZwCU.png)
 
-[繁體中文](README.zhtw.md)
 [简体中文](README.zh.md)
 
-> GDIndex is similar to [GOIndex](https://github.com/donwa/goindex).
-> It allows you to deploy a "Google Drive Index" on CloudFlare Workers along with many extra features
->
-> By the way, instead of modify from GOIndex, this is a total rewrite
+This fork is modified for Emby server. It allows Emby clients get videos and subtitles from CloudFlare Worker instead of Emby server.
 
-[Demo](https://gdindex-demo.maple3142.workers.dev/)
+### Precondition
 
-## Difference between GOIndex and GDIndex
+1. You should add your domain to  CloudFlare.
+2. Set the domain name of your Emby server to proxied.
 
--   Frontend is based on Vue.js
--   Image viewer doesn't require opening new page
--   Video player support subtitles(Currently only srt is supported)
--   Online PDF, EPUB reader
--   No directory-level password protection(.password)
--   Support Http Basic Auth
--   Support multiple drives(personal, team) without changing server's code
-
-## Usage
-
-### Simple and automatic way
-
-Go [https://gdindex-code-builder.maple3142.net/](https://gdindex-code-builder.maple3142.net/), and follow its instructions.
-
-### Manual way
+### Attention
+Transcode will not work when enabled.
+### Instaillation
 
 1. Install [rclone](https://rclone.org/)
 2. Setup your Google Drive: https://rclone.org/drive/
@@ -36,8 +21,28 @@ Go [https://gdindex-code-builder.maple3142.net/](https://gdindex-code-builder.ma
 4. Find `refresh_token` in your `rclone.conf`, and `root_folder_id` too(optionally).
 5. Copy the content of [worker/dist/worker.js](worker/dist/worker.js) to CloudFlare Workers.
 6. Fill `refresh_token`, `root_folder_id` and other options on the top of the script.
-7. Deploy!
-
+7. Set `emby_redirect` to `ture`, and fill the url of your Emby server in `emby_server`. 
+8. Deploy!
+9. Add the following URLs to Routes of the CloudFlare Worker you deploy in the last step.
+```
+REPLACE_WITH_YOUR_EMBY_SERVER_URL/videos/*
+REPLACE_WITH_YOUR_EMBY_SERVER_URL/Videos/*
+REPLACE_WITH_YOUR_EMBY_SERVER_URL/emby/Videos/*
+REPLACE_WITH_YOUR_EMBY_SERVER_URL/emby/videos/*
+```
+10.  Fill path mappings in `path_match`:
+```
+path_match: {
+    		'EMBY_SERVER_PATH_0': 'GDINDEX_PATH_0',
+            'EMBY_SERVER_PATH_1': 'GDINDEX_PATH_1',
+  		},
+```
+For example, GDIndex can access a file at `https://xxx.123.workers.dev/Mediafile/Movie/title/filename.mkv`, the Emby can access with the same file at `/mnt/external/Movie/title/filename.mkv`. The `path_match` field should be:
+```
+path_match: {
+    		'/mnt/external': '/Mediafile',
+  		},
+```
 ### Using service accounts
 
 1. Create a service account, a corresponding service account key, and get the JSON from the [Google Cloud Platform console](https://cloud.google.com/iam/docs/creating-managing-service-account-keys) 
